@@ -1,0 +1,538 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Becka Companion | Multifamily</title>
+    <style>
+      :root{ --bg:#ffffff; --text:#0a0a0a; --muted:#6b7280; --border:#e5e7eb; --soft:#f3f4f6; --accent:#111827; }
+      body { background:var(--bg); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+      .wrap { max-width: 960px; margin: 24px auto; padding: 16px; }
+      .card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:16px; }
+      .row { display:none; }
+      button { background:#111827; color:#fff; border:none; border-radius:10px; padding:10px 12px; cursor:pointer; }
+      button:hover { opacity:0.9; }
+      .log { display:none; }
+      .messages { max-height: 52vh; overflow:auto; padding: 10px; }
+      .msg { display:flex; gap:10px; margin:12px 0; }
+      .bubble { padding:10px 12px; border-radius:14px; border:1px solid var(--border); max-width: 78%; white-space:pre-wrap; word-wrap:break-word; }
+      .msg.ani .bubble { background:#f8fafc; }
+      .msg.user { justify-content:flex-end; }
+      .msg.user .bubble { background:#111827; color:#fff; border-color:#000; }
+      .composer { position:fixed; bottom:0; left:0; right:0; background:linear-gradient(180deg, rgba(255,255,255,0.66), var(--bg)); border-top:1px solid var(--border); }
+      .composer .inner { max-width:960px; margin:0 auto; padding:12px 16px; }
+      .bar { display:flex; gap:8px; align-items:center; border:1px solid var(--border); border-radius:16px; padding:8px; background:#fff; }
+      .bar input[type=text] { flex:1; font-size:15px; border:none; outline:none; background:transparent; padding:8px; }
+      .btn { background:#111827; color:#fff; border:none; border-radius:12px; padding:10px 14px; cursor:pointer; }
+      .btn.secondary { background:#f3f4f6; color:#0f172a; border:1px solid var(--border); }
+      .upload { display:inline-flex; align-items:center; gap:6px; border:1px dashed var(--border); border-radius:10px; padding:8px 10px; font-size:12px; color:var(--muted); cursor:pointer; }
+      .upload:hover { color:#0f172a; border-color:#cbd5e1; }
+      .badge { font-size:12px; color:var(--muted); }
+      .settings{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:10px; }
+      .link{ background:transparent; border:none; color:#2563eb; font-size:12px; cursor:pointer; padding:4px 6px; }
+      .setting{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:10px; padding:6px 8px; background:var(--soft); }
+      .setting span{ font-size:12px; color:var(--muted); }
+      .setting input{ width:80px; border:none; outline:none; background:transparent; font-size:13px; color:var(--text); text-align:right; }
+      .metrics{ display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:8px; }
+      .metric{ background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:10px; }
+      .metric .label{ font-size:12px; color:var(--muted); }
+      .metric .value{ font-weight:600; }
+    </style>
+    <style>
+      .settings .link.active{ background:#111; color:#fff; border-color:#111; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h2 style="margin:0 0 6px">Becka — Multifamily Companion</h2>
+        <div class="badge">Ask “Quick analysis”, “Detailed analysis”, “Suggested price”, “Area cap rate”.</div>
+        <div id="aiStatus" class="badge">AI: loading…</div>
+        <div class="settings">
+          <span class="badge">Mode</span>
+          <button id="modeQuick" class="link" title="Cap-based quick pricing">Quick</button>
+          <button id="modeDetailed" class="link" title="DSCR-based financing">Detailed</button>
+          <span class="badge">•</span>
+          <label class="setting"><span>Area Cap</span><input id="capInput" type="number" step="0.01" placeholder="6.5" /></label>
+          <label class="setting"><span>Interest</span><input id="intInput" type="number" step="0.01" placeholder="6.5" /></label>
+          <label class="setting"><span>LTV</span><input id="ltvInput" type="number" step="1" placeholder="75" /></label>
+          <label class="setting"><span>DSCR</span><input id="dscrInput" type="number" step="0.01" placeholder="1.25" /></label>
+          <label class="setting"><span>Amort (yrs)</span><input id="amortInput" type="number" step="1" placeholder="30" /></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="btnStart">Start Listening</button>
+          <button id="btnStop">Stop Listening</button>
+          <button id="btnSpeak">Speak Summary</button>
+          <button id="btnFast">AI Mode: Fast</button>
+          <button id="btnBalanced">AI Mode: Balanced</button>
+          <button id="btnWake">Wake Word: Off</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">Analysis</h3>
+        <div id="analysis" class="metrics"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">Chat</h3>
+        <div id="messages" class="messages"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">Suggestions (Estimated Annual Impact)</h3>
+        <ul id="sugs"></ul>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="inner">
+        <form id="composerForm" class="bar">
+          <label class="upload" for="fileInput">📎 Upload PDF/Excel
+            <input id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple hidden />
+          </label>
+          <input id="chatText" type="text" placeholder="Message Becka about this property…" autocomplete="off" />
+          <button id="btnMic" type="button" class="btn secondary" aria-pressed="false" title="Toggle mic">🎤</button>
+          <button id="btnSend" type="submit" class="btn" title="Send">Send</button>
+        </form>
+        <div class="badge">Tip: Try “Summarize”, “Increase NOI”, “Top expenses”, or drop files here.</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
+      const status = document.getElementById('aiStatus');
+      async function initEngine(preferred) {
+        const model = preferred || localStorage.getItem('ani_model') || 'Phi-3-mini-4k-instruct-q4f16_1';
+        status.textContent = 'AI: loading…';
+        try {
+          const engine = await webllm.CreateMLCEngine({ model }, {
+            initProgressCallback: (p) => {
+              try { const txt = typeof p === 'string' ? p : (p?.text || 'loading…'); status.textContent = 'AI: ' + txt; } catch {}
+            }
+          });
+          window.aniEngine = engine;
+          localStorage.setItem('ani_model', model);
+          status.textContent = `AI: ready (${model})`;
+        } catch (e) {
+          console.warn('WebLLM init failed for', model, e);
+          if (model !== 'Llama-3.1-8B-Instruct-q4f32_1') {
+            // fallback to balanced
+            await initEngine('Llama-3.1-8B-Instruct-q4f32_1');
+            return;
+          }
+          status.textContent = 'AI: disabled';
+        }
+      }
+      await initEngine();
+      window.aniInitEngine = initEngine;
+      initSettingsUI();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script>
+      if (window['pdfjsLib']) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      }
+      function readJSON(key, fallback) {
+        try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+      }
+
+      function suggest(inputs, results, itemization) {
+        const suggestions = [];
+        const units = inputs.units || 0;
+        const egi = results.effectiveGrossIncome || 0;
+        const targetMgmt = egi * 0.03;
+        const mgmt = inputs.management || 0;
+        if (mgmt > targetMgmt && targetMgmt > 0) suggestions.push({ title: 'Normalize management fee to 3% of EGI', annualImpact: Math.max(0, mgmt - targetMgmt), rationale: 'Negotiate or re-bid management.' });
+        const utilities = inputs.utilities || 0;
+        if (utilities > 0) suggestions.push({ title: 'Implement RUBS to recapture 15% of utilities', annualImpact: utilities * 0.15, rationale: 'Billback reduces owner-paid utilities.' });
+        const repairs = inputs.repairs || 0;
+        const repairsPerDoor = units ? repairs / units : repairs;
+        if (repairsPerDoor > 500) suggestions.push({ title: 'Preventative maintenance program (-10% repairs)', annualImpact: repairs * 0.10, rationale: 'Vendor consolidation & PM reduce emergencies.' });
+        const gpr = inputs.grossRents || 0;
+        const otherIncome = inputs.otherIncome || 0;
+        const targetOther = gpr * 0.05;
+        if (otherIncome < targetOther) suggestions.push({ title: 'Add pet/parking/laundry to reach 5% other income', annualImpact: Math.max(0, targetOther - otherIncome), rationale: 'Ancillary income aligned with value.' });
+        const admin = inputs.admin || 0;
+        const adminPerDoor = units ? admin / units : admin;
+        if (adminPerDoor > 150) suggestions.push({ title: 'Trim admin/legal/marketing by 10%', annualImpact: admin * 0.10, rationale: 'Audit subscriptions & fees.' });
+        const vacancyRate = inputs.vacancyRate || 0;
+        if (vacancyRate > 5 && gpr > 0) suggestions.push({ title: 'Stabilize vacancy to 5%', annualImpact: gpr * ((vacancyRate - 5)/100), rationale: 'Improve leasing funnel and retention.' });
+        const labels = new Set((itemization?.incomeItems || []).map(i => (i.label||'').toLowerCase()));
+        const candidates = [ { label:'pet rent', amount: units * 20 * 12 }, { label:'reserved parking', amount: units * 10 * 12 }, { label:'utility billback', amount: utilities * 0.10 } ];
+        candidates.forEach(f => {
+          if (!Array.from(labels).some(l => l.includes('pet') || l.includes('parking') || l.includes('utility billback'))) {
+            if (f.amount > 0) suggestions.push({ title:`Consider ${f.label}`, annualImpact: f.amount, rationale:'Recurring ancillary income.' });
+          }
+        });
+        suggestions.sort((a,b)=> (b.annualImpact||0) - (a.annualImpact||0));
+        return suggestions;
+      }
+
+      function renderSuggestions() {
+        const inputs = readJSON('ani_inputs', {});
+        const results = readJSON('ani_results', {});
+        const itemization = readJSON('ani_itemization', { incomeItems: [], expenseItems: [] });
+        const sugs = suggest(inputs, results, itemization);
+        const ul = document.getElementById('sugs');
+        ul.innerHTML = '';
+        sugs.slice(0, 10).forEach(s => {
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${s.title}</strong> — <span class="impact">$${Math.max(0, s.annualImpact||0).toFixed(0)}</span><div class="badge">${s.rationale}</div>`;
+          ul.appendChild(li);
+        });
+      }
+
+      // Financing and pricing analysis
+      function getSettings(){
+        const defaults = { capRate: 0.065, interest: 0.065, amortYears: 30, ltv: 0.75, dscr: 1.25, mode: 'quick' };
+        const s = readJSON('ani_settings', {});
+        return Object.assign({}, defaults, s || {});
+      }
+      function saveSettings(s){ localStorage.setItem('ani_settings', JSON.stringify(s)); }
+      function percentToFraction(v){ v = parseFloat(v||0); return v > 1 ? (v/100) : v; }
+      function fractionToPercentStr(v){ return ((parseFloat(v||0))*100).toFixed(2); }
+      function annuityFactor(rateMonthly, n){ return rateMonthly * Math.pow(1 + rateMonthly, n) / (Math.pow(1 + rateMonthly, n) - 1); }
+
+      function analyze(){
+        const res = readJSON('ani_results', {});
+        const s = getSettings();
+        const noi = res.noi || 0;
+        const cap = s.capRate || 0;
+        const priceCash = (noi > 0 && cap > 0) ? (noi / cap) : 0;
+        let priceFin = 0, loan = 0, payMonthly = 0;
+        const r = (s.interest||0) / 12; const n = (s.amortYears||0) * 12;
+        const fac = (r > 0 && n > 0) ? annuityFactor(r, n) : 0;
+        if (s.mode === 'detailed' && fac > 0 && s.dscr > 0) {
+          const payMaxMonthly = (noi / s.dscr) / 12;
+          loan = payMaxMonthly / fac;
+          priceFin = s.ltv > 0 ? (loan / s.ltv) : 0;
+          payMonthly = payMaxMonthly;
+        } else {
+          // quick: same price as cap-based, compute indicative monthly debt
+          priceFin = priceCash;
+          loan = priceFin * (s.ltv||0);
+          payMonthly = fac > 0 ? (loan * fac) : 0;
+        }
+        const analysis = { noi, capRate: cap, priceCash, priceFin, loan, payMonthly, ltv: s.ltv, dscrTarget: s.dscr, interest: s.interest, amortYears: s.amortYears };
+        localStorage.setItem('ani_analysis', JSON.stringify(analysis));
+        renderAnalysis(analysis);
+      }
+
+      function renderAnalysis(a){
+        const el = document.getElementById('analysis'); if (!el) return;
+        const money = (v)=> `$${Math.round(v||0).toLocaleString()}`;
+        const pct = (v)=> `${((v||0)*100).toFixed(2)}%`;
+        el.innerHTML = `
+          <div class="metric"><div class="label">NOI</div><div class="value">${money(a.noi)}</div></div>
+          <div class="metric"><div class="label">Area Cap</div><div class="value">${pct(a.capRate)}</div></div>
+          <div class="metric"><div class="label">Price (All-Cash)</div><div class="value">${money(a.priceCash)}</div></div>
+          <div class="metric"><div class="label">Price (Financing)</div><div class="value">${money(a.priceFin)}</div></div>
+          <div class="metric"><div class="label">Loan Amount</div><div class="value">${money(a.loan)}</div></div>
+          <div class="metric"><div class="label">Monthly Debt</div><div class="value">${money(a.payMonthly)}</div></div>
+          <div class="metric"><div class="label">LTV</div><div class="value">${pct(a.ltv)}</div></div>
+          <div class="metric"><div class="label">DSCR Target</div><div class="value">${(a.dscrTarget||0).toFixed(2)}</div></div>
+          <div class="metric"><div class="label">Interest</div><div class="value">${pct(a.interest)}</div></div>
+          <div class="metric"><div class="label">Amort</div><div class="value">${a.amortYears} yrs</div></div>
+        `;
+      }
+
+      function updateModeButtons(){
+        const s = getSettings();
+        const q = document.getElementById('modeQuick');
+        const d = document.getElementById('modeDetailed');
+        if (!q || !d) return;
+        q.classList.toggle('active', s.mode === 'quick');
+        d.classList.toggle('active', s.mode === 'detailed');
+      }
+
+      function initSettingsUI(){
+        const s = getSettings();
+        const capInput = document.getElementById('capInput');
+        const intInput = document.getElementById('intInput');
+        const ltvInput = document.getElementById('ltvInput');
+        const dscrInput = document.getElementById('dscrInput');
+        const amortInput = document.getElementById('amortInput');
+        if (capInput) capInput.value = fractionToPercentStr(s.capRate);
+        if (intInput) intInput.value = fractionToPercentStr(s.interest);
+        if (ltvInput) ltvInput.value = (s.ltv*100).toFixed(0);
+        if (dscrInput) dscrInput.value = (s.dscr||1.25).toFixed(2);
+        if (amortInput) amortInput.value = s.amortYears;
+        updateModeButtons();
+        const saveAndAnalyze = ()=>{ saveSettings(s); analyze(); };
+        const bind = (el, key, transform)=>{ if (!el) return; el.addEventListener('change', ()=>{ s[key] = transform ? transform(el.value) : el.value; saveAndAnalyze(); updateModeButtons(); }); };
+        bind(capInput, 'capRate', percentToFraction);
+        bind(intInput, 'interest', percentToFraction);
+        bind(ltvInput, 'ltv', percentToFraction);
+        bind(dscrInput, 'dscr', (v)=> parseFloat(v||1.25));
+        bind(amortInput, 'amortYears', (v)=> parseInt(v||30, 10));
+        const qBtn = document.getElementById('modeQuick');
+        const dBtn = document.getElementById('modeDetailed');
+        if (qBtn) qBtn.addEventListener('click', ()=>{ s.mode='quick'; saveAndAnalyze(); updateModeButtons(); });
+        if (dBtn) dBtn.addEventListener('click', ()=>{ s.mode='detailed'; saveAndAnalyze(); updateModeButtons(); });
+        analyze();
+      }
+
+      let _lastAnalysisKey = '';
+      function maybeAnalyzeTick(){
+        const res = readJSON('ani_results', {});
+        const key = `${res.noi||0}|${res.capRate||0}|${res.effectiveGrossIncome||0}|${res.totalOperatingExpenses||0}`;
+        if (key !== _lastAnalysisKey){ _lastAnalysisKey = key; analyze(); }
+      }
+      setInterval(maybeAnalyzeTick, 1000);
+
+      function speak(text) {
+        const u = new SpeechSynthesisUtterance(text);
+        u.rate = 1.0; u.pitch = 1.0; u.lang = 'en-US';
+        speechSynthesis.speak(u);
+      }
+
+      function summarize() {
+        const inputs = readJSON('ani_inputs', {});
+        const res = readJSON('ani_results', {});
+        const addr = inputs.address ? ` at ${inputs.address}` : '';
+        const units = inputs.units || 0;
+        const egi = res.effectiveGrossIncome ? `$${Math.round(res.effectiveGrossIncome)}` : 'n/a';
+        const noi = res.noi ? `$${Math.round(res.noi)}` : 'n/a';
+        const cap = res.capRate ? `${(res.capRate*100).toFixed(2)}%` : 'n/a';
+        const msg = `Here is the property${addr}. ${units} units. Effective gross income ${egi}. NOI ${noi}. Cap rate ${cap}. I will suggest ways to increase profit and reduce overhead.`;
+        speak(msg);
+      }
+
+      async function answer(q) {
+        // Becka: prioritize direct analysis replies when asked about pricing or metrics
+        const text = (typeof q === 'string') ? q : (q && q.text) ? q.text : '';
+        const t = (text||'').toLowerCase();
+        const needsAnalysis = ['quick analysis','detailed analysis','purchase price','price','cap rate','financing','metrics','dscr','ltv','interest','amort'].some(k => t.includes(k));
+        if (needsAnalysis){
+          const a = readJSON('ani_analysis', {});
+          const areaCapStr = ((a.capRate||0)*100).toFixed(2)+'%';
+          const out = [
+            `Area cap: ${areaCapStr}. NOI: $${Math.round(a.noi||0).toLocaleString()}.`,
+            `Suggested price (all-cash): $${Math.round(a.priceCash||0).toLocaleString()}.`,
+            `Suggested price (with financing): $${Math.round(a.priceFin||0).toLocaleString()} at ${((a.ltv||0)*100).toFixed(0)}% LTV, ${(a.dscrTarget||0).toFixed(2)} DSCR, ${(a.interest||0*100).toFixed ? (a.interest*100).toFixed(2) : '0.00'}% interest over ${a.amortYears||0} years.`,
+            `Estimated monthly debt service: $${Math.round(a.payMonthly||0).toLocaleString()}.`,
+          ].join(' ');
+          appendMessage(out, 'assistant');
+          speak(out);
+          return out;
+        }
+        const inputs = readJSON('ani_inputs', {});
+        const res = readJSON('ani_results', {});
+        const it = readJSON('ani_itemization', { incomeItems: [], expenseItems: [] });
+        const t = q.toLowerCase();
+        function money(n){ return `$${Math.round(n||0)}`; }
+        if (t.includes('noi')) return `NOI is ${money(res.noi)}.`;
+        if (t.includes('cap')) return `Cap rate is ${(res.capRate*100).toFixed(2)} percent.`;
+        if (t.includes('egi') || t.includes('income')) return `Effective gross income is ${money(res.effectiveGrossIncome)}. Other income is ${money(inputs.otherIncome)}.`;
+        if (t.includes('vacancy')) return `Vacancy is ${inputs.vacancyRate || 0} percent.`;
+        if (t.includes('tax')) return `Annual taxes are ${money(inputs.taxes)}.`;
+        if (t.includes('insurance')) return `Annual insurance is ${money(inputs.insurance)}.`;
+        if (t.includes('repairs') || t.includes('maintenance')) return `Repairs and maintenance are ${money(inputs.repairs)} per year.`;
+        if (t.includes('utilities')) return `Utilities are ${money(inputs.utilities)} per year.`;
+        if (t.includes('management')) return `Management fee is ${money(inputs.management)} per year.`;
+        if (t.includes('admin')) return `Admin and professional expenses are ${money(inputs.admin)} per year.`;
+        if (t.includes('suggest') || t.includes('improve') || t.includes('profit')) {
+          const sugs = suggest(inputs, res, it).slice(0,3).map(s=>`${s.title} for about ${money(s.annualImpact)} annually`).join('; ');
+          return `Top improvements: ${sugs}.`;
+        }
+        const inc = it.incomeItems[0]; const exp = it.expenseItems[0];
+        if (t.includes('top expense') && exp) return `Top expense line is ${exp.label} at ${money(exp.amount)}.`;
+        if (t.includes('top income') && inc) return `Top income line is ${inc.label} at ${money(inc.amount)}.`;
+        // Try LLM if available
+        try {
+          if (window.aniEngine) {
+            const topInc = (it.incomeItems||[]).slice(0,3).map(i=>`${i.label} ${money(i.amount)}`).join(', ');
+            const topExp = (it.expenseItems||[]).slice(0,3).map(i=>`${i.label} ${money(i.amount)}`).join(', ');
+            const sys = `You are Becka, a helpful multifamily real estate companion trained on underwriting and operations (RE Mentor style). Speak concisely with practical steps to increase NOI and reduce overhead. Use the provided context when relevant.`;
+            const ctx = `Address: ${inputs.address||'n/a'}; Units: ${inputs.units||0}; EGI: ${money(res.effectiveGrossIncome)}; NOI: ${money(res.noi)}; Cap: ${(res.capRate? (res.capRate*100).toFixed(2)+'%':'n/a')}; Vacancy: ${(inputs.vacancyRate||0)}%; Other income: ${money(inputs.otherIncome)}; Taxes: ${money(inputs.taxes)}; Insurance: ${money(inputs.insurance)}; Repairs: ${money(inputs.repairs)}; Utilities: ${money(inputs.utilities)}; Mgmt: ${money(inputs.management)}; Admin: ${money(inputs.admin)}; Top income: ${topInc||'n/a'}; Top expenses: ${topExp||'n/a'};`;
+            const prompt = `${sys}\nContext: ${ctx}\nUser: ${q}\nAssistant:`;
+            const out = await window.aniEngine.generate(prompt, { temperature: 0.6, max_tokens: 220 });
+            if (out && typeof out === 'string' && out.trim().length > 0) return out.trim();
+          }
+        } catch (e) {
+          // Fallback
+        }
+        return `I can summarize NOI, cap rate, expenses like taxes or utilities, or suggest improvements.`;
+      }
+
+      const msgWrap = document.getElementById('messages');
+      function appendLog(line, role='ani') {
+        const row = document.createElement('div');
+        row.className = 'msg ' + (role === 'user' ? 'user' : 'ani');
+        const bubble = document.createElement('div');
+        bubble.className = 'bubble';
+        bubble.textContent = line;
+        row.appendChild(bubble);
+        msgWrap.appendChild(row);
+        msgWrap.scrollTop = msgWrap.scrollHeight;
+      }
+
+      let recognition = null;
+      let wakeOn = (localStorage.getItem('ani_wake')||'off') === 'on';
+      const wakeWords = ['becka', 'hey becka', 'becka,', 'hey, becka'];
+      function initRec() {
+        const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { appendLog('Speech recognition is not supported in this browser.'); return null; }
+        const r = new SR(); r.continuous = true; r.interimResults = false; r.lang = 'en-US';
+        r.onresult = (ev) => {
+          for (let i = ev.resultIndex; i < ev.results.length; i++) {
+            let text = ev.results[i][0].transcript.trim();
+            if (wakeOn) {
+              const lower = text.toLowerCase();
+              const starts = wakeWords.some(w => lower.startsWith(w));
+              if (!starts) { appendLog('(wake filtered) ' + text, 'user'); continue; }
+              // strip wake word
+              wakeWords.forEach(w => { if (lower.startsWith(w)) { text = text.slice(w.length).trim(); } });
+            }
+            appendLog(text, 'user');
+            Promise.resolve(answer(text)).then(resp => {
+              appendLog(resp, 'ani');
+              speak(resp);
+            });
+          }
+        };
+        r.onerror = (e) => appendLog('Error: ' + (e.message || e.error));
+        return r;
+      }
+
+      document.getElementById('btnStart').onclick = () => {
+        if (!recognition) recognition = initRec();
+        try { recognition && recognition.start(); appendLog('Listening…'); } catch {}
+      };
+      document.getElementById('btnStop').onclick = () => {
+        try { recognition && recognition.stop(); appendLog('Stopped.'); } catch {}
+      };
+      document.getElementById('btnSpeak').onclick = () => { summarize(); };
+      document.getElementById('btnFast').onclick = async () => {
+        await (window.aniInitEngine && window.aniInitEngine('Phi-3-mini-4k-instruct-q4f16_1'));
+      };
+      document.getElementById('btnBalanced').onclick = async () => {
+        await (window.aniInitEngine && window.aniInitEngine('Llama-3.1-8B-Instruct-q4f32_1'));
+      };
+      const btnWake = document.getElementById('btnWake');
+      function updateWakeBtn(){ btnWake.textContent = `Wake Word: ${wakeOn ? 'On' : 'Off'}`; }
+      updateWakeBtn();
+      btnWake.onclick = () => { wakeOn = !wakeOn; localStorage.setItem('ani_wake', wakeOn ? 'on' : 'off'); updateWakeBtn(); };
+
+      // Chat composer
+      const form = document.getElementById('composerForm');
+      const chatText = document.getElementById('chatText');
+      if (form && chatText) {
+        form.addEventListener('submit', async (e) => {
+          e.preventDefault(); const q = chatText.value.trim(); if (!q) return; chatText.value='';
+          appendLog(q, 'user');
+          const resp = await answer(q);
+          appendLog(resp, 'ani');
+        });
+      }
+
+      // File uploads in composer
+      const fileInput = document.getElementById('fileInput');
+      if (fileInput) {
+        fileInput.addEventListener('change', async (e) => {
+          const files = Array.from(e.target.files||[]);
+          for (const file of files) { await handleFile(file); }
+          e.target.value = '';
+        });
+      }
+
+      // Drag-drop into messages area
+      const msgArea = document.getElementById('messages');
+      if (msgArea) {
+        msgArea.addEventListener('dragover', (e)=>{ e.preventDefault(); });
+        msgArea.addEventListener('drop', async (e)=>{
+          e.preventDefault(); const files = Array.from(e.dataTransfer.files||[]);
+          for (const file of files) { await handleFile(file); }
+        });
+      }
+
+      async function handleFile(file){
+        appendLog(`Uploaded ${file.name}`, 'user');
+        const text = await readFileToText(file);
+        const parsed = parseContent(text);
+        appendLog(`Parsed ${file.name}. Found ${parsed.incomeItems.length} income and ${parsed.expenseItems.length} expense lines. Context updated.`, 'ani');
+        renderSuggestions();
+      }
+
+      function readFileToText(file){
+        const ext = file.name.toLowerCase().split('.').pop();
+        if (ext === 'pdf') return parsePdf(file);
+        if (ext === 'xlsx' || ext === 'xls' || ext === 'csv') return parseSheet(file);
+        return file.text();
+      }
+
+      function parseSheet(file){
+        return new Promise((resolve)=>{
+          const reader = new FileReader();
+          reader.onload = () => {
+            try {
+              const data = new Uint8Array(reader.result);
+              const wb = XLSX.read(data, {type:'array'});
+              const lines = [];
+              wb.SheetNames.forEach(name => {
+                const sheet = wb.Sheets[name];
+                const rows = XLSX.utils.sheet_to_json(sheet, {header:1, raw:false});
+                rows.forEach(row => { const line = row.filter(Boolean).join(' '); if (line.trim()) lines.push(line); });
+              });
+              resolve(lines.join('\n'));
+            } catch (e) { resolve(''); }
+          };
+          reader.readAsArrayBuffer(file);
+        });
+      }
+
+      async function parsePdf(file){
+        try {
+          const arrayBuffer = await file.arrayBuffer();
+          const pdf = await pdfjsLib.getDocument({data: arrayBuffer}).promise;
+          const lines = [];
+          for (let i=1; i<=pdf.numPages; i++){
+            const page = await pdf.getPage(i);
+            const content = await page.getTextContent();
+            const text = content.items.map(it=> it.str).join(' ');
+            lines.push(text.replace(/\s+/g,' ').trim());
+          }
+          return lines.join('\n');
+        } catch(e){ return ''; }
+      }
+
+      const CATEGORY_RULES = {
+        income: [/rent/i, /parking/i, /laundry/i, /other\s*income/i, /application/i, /pet/i, /late/i],
+        expenses: [/tax/i, /insurance/i, /(repairs|maintenance)/i, /(utilities|water|electric|gas|trash|sewer)/i, /management/i, /(admin|legal|professional)/i, /(marketing|advertising)/i, /(turnover|make\s*-?ready)/i]
+      };
+
+      function parseAmount(s){ s = String(s||'').replace(/[,$]/g,''); const neg = /\(/.test(s) || /-/.test(s); const n = parseFloat(s.replace(/[^\d.]/g,'')) || 0; return neg? -n : n; }
+
+      function parseContent(text){
+        const lines = String(text||'').split(/\r?\n/);
+        const incomeItems = [], expenseItems = [];
+        for (const ln of lines){
+          const m = ln.match(/([A-Za-z][A-Za-z &/\-]+).*?(\$?\(?-?[\d,]+(?:\.\d{2})?\)?)/);
+          if (!m) continue;
+          const label = m[1].trim(); const amt = parseAmount(m[2]); const low = label.toLowerCase();
+          const isIncome = CATEGORY_RULES.income.some(re=> re.test(low));
+          const isExpense = CATEGORY_RULES.expenses.some(re=> re.test(low));
+          if (isIncome) incomeItems.push({ label, amount: Math.abs(amt) });
+          else if (isExpense) expenseItems.push({ label, amount: Math.abs(amt) });
+        }
+        incomeItems.sort((a,b)=> b.amount - a.amount);
+        expenseItems.sort((a,b)=> b.amount - a.amount);
+        const inputs = readJSON('ani_inputs', {});
+        const totalIncome = incomeItems.reduce((s,i)=> s+i.amount, 0);
+        const totalExpenses = expenseItems.reduce((s,i)=> s+i.amount, 0);
+        const noi = totalIncome - totalExpenses;
+        const price = inputs.purchasePrice || inputs.price || 0;
+        const capRate = price ? (noi/price) : 0;
+        const results = { effectiveGrossIncome: totalIncome, totalExpenses, noi, capRate };
+        localStorage.setItem('ani_itemization', JSON.stringify({ incomeItems, expenseItems }));
+        localStorage.setItem('ani_results', JSON.stringify(results));
+        return { incomeItems, expenseItems, results };
+      }
+
+      renderSuggestions();
+      setInterval(renderSuggestions, 2000);
+    </script>
+  </body>
+</html>

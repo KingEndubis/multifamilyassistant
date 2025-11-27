@@ -1,50 +1,31 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import * as XLSX from 'xlsx';
-import { 
-  Building2, Calculator, MapPin, PieChart, Menu, UploadCloud, 
-  Check, AlertCircle, ArrowRight, TrendingUp, MessageSquare, X, 
-  FileSpreadsheet, Settings, Loader2, Globe, Zap
-} from 'lucide-react';
+import { calculateMortgage, analyzeDeal } from './lib/finance.js';
+const IconStub = ({ className }) => (
+  <span className={className} aria-hidden="true">★</span>
+);
+
+const Building2 = IconStub;
+const Calculator = IconStub;
+const MapPin = IconStub;
+const PieChart = IconStub;
+const Menu = IconStub;
+const UploadCloud = IconStub;
+const Check = IconStub;
+const AlertCircle = IconStub;
+const ArrowRight = IconStub;
+const TrendingUp = IconStub;
+const MessageSquare = IconStub;
+const X = IconStub;
+const FileSpreadsheet = IconStub;
+const Settings = IconStub;
+const Loader2 = IconStub;
+const Globe = IconStub;
+const Zap = IconStub;
 
 
-// --- LOGIC ENGINE ---
-
-
-const calculateMortgage = (principal, rate, amortization) => {
-  if (rate === 0) return principal / amortization;
-  const monthlyRate = rate / 100 / 12;
-  const numPayments = amortization * 12;
-  if (monthlyRate === 0) return principal / numPayments * 12;
-  return (principal * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -numPayments)) * 12;
-};
-
-
-const analyzeDeal = (inputs) => {
-  const grossPotentialIncome = inputs.grossRents + inputs.otherIncome;
-  const vacancyLoss = inputs.grossRents * (inputs.vacancyRate / 100);
-  const effectiveGrossIncome = grossPotentialIncome - vacancyLoss;
-
-
-  const totalExpenses = inputs.taxes + inputs.insurance + inputs.repairs + inputs.management + inputs.utilities + inputs.admin;
-  const expenseRatio = effectiveGrossIncome > 0 ? (totalExpenses / effectiveGrossIncome) * 100 : 0;
-
-
-  const noi = effectiveGrossIncome - totalExpenses;
-  const loanAmount = inputs.purchasePrice - inputs.downPayment;
-  const annualDebtService = calculateMortgage(loanAmount, inputs.interestRate, inputs.amortization);
-
-
-  const cashFlow = noi - annualDebtService;
-  const cashOnCash = inputs.downPayment > 0 ? (cashFlow / inputs.downPayment) * 100 : 0;
-  const capRate = inputs.purchasePrice > 0 ? (noi / inputs.purchasePrice) * 100 : 0;
-  const dscr = annualDebtService > 0 ? noi / annualDebtService : 0;
-  const marketValue = inputs.marketCapRate > 0 ? noi / (inputs.marketCapRate / 100) : 0;
-  const pricePerDoor = inputs.units > 0 ? inputs.purchasePrice / inputs.units : 0;
-
-
-  return { noi, cashFlow, cashOnCash, capRate, dscr, expenseRatio, marketValue, effectiveGrossIncome, totalExpenses, loanAmount, annualDebtService, pricePerDoor };
-};
+// --- LOGIC ENGINE --- (moved to src/lib/finance.js)
 
 
 // --- REAL PARSING ENGINE ---
@@ -61,9 +42,34 @@ const CATEGORY_RULES = [
   { key: 'admin', keywords: ['admin', 'legal', 'professional', 'accounting', 'marketing', 'advertising', 'office exp', 'licenses', 'permits'] },
 ];
 
+// Extract text from a PDF ArrayBuffer using PDF.js loaded from CDN
+const extractTextFromPdf = async (arrayBuffer) => {
+  try {
+    const pdfjsLib = typeof window !== 'undefined' ? window.pdfjsLib : null;
+    if (!pdfjsLib) throw new Error('PDF library not loaded.');
+    // Configure worker to CDN URL
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
+    const pdf = await loadingTask.promise;
+    let text = '';
+    for (let i = 1; i <= pdf.numPages; i++) {
+      const page = await pdf.getPage(i);
+      const content = await page.getTextContent();
+      const pageText = content.items.map((it) => it.str).join(' ');
+      text += `\n${pageText}`;
+    }
+    return text;
+  } catch (e) {
+    console.error('PDF parse error:', e);
+    return '';
+  }
+};
+
 
 const parseContent = (content, isBinary = false) => {
   const extracted = {};
+  extracted.incomeItems = [];
+  extracted.expenseItems = [];
   
   const findNumber = (str) => {
     if (typeof str === 'number') return str;
@@ -90,7 +96,10 @@ const parseContent = (content, isBinary = false) => {
       return {};
     }
   } else {
-    rows = content.split(/\r?\n/).map(line => line.split(/,|;|\t/));
+    // Support CSV/TSV/plain text and PDF-extracted text by splitting on newlines and multi-space separators
+    rows = content
+      .split(/\r?\n/)
+      .map(line => line.split(/,|;|\t|\s{2,}/));
   }
 
 
@@ -125,6 +134,13 @@ const parseContent = (content, isBinary = false) => {
       CATEGORY_RULES.forEach(rule => {
         if (rule.keywords.some(k => rowStr.includes(k))) {
           extracted[rule.key] = safeAdd((extracted[rule.key] || 0), maxVal);
+          const label = row.join(' ').trim().slice(0, 120);
+          const item = { label, amount: maxVal, category: rule.key };
+          if (rule.key === 'grossRents' || rule.key === 'otherIncome') {
+            extracted.incomeItems.push(item);
+          } else {
+            extracted.expenseItems.push(item);
+          }
         }
       });
     }
@@ -226,6 +242,7 @@ export default function SyndicatePro() {
 
 
   const results = analyzeDeal(inputs);
+  const [itemization, setItemization] = useState({ incomeItems: [], expenseItems: [] });
 
 
   // File Upload Logic
@@ -241,13 +258,26 @@ export default function SyndicatePro() {
 
 
     const reader = new FileReader();
-    const isBinary = file.name.endsWith('.xls') || file.name.endsWith('.xlsx') || file.name.endsWith('.xlsm');
+    const isExcel = file.name.toLowerCase().endsWith('.xls') || file.name.toLowerCase().endsWith('.xlsx') || file.name.toLowerCase().endsWith('.xlsm');
+    const isPdf = file.name.toLowerCase().endsWith('.pdf');
 
 
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       try {
         const content = event.target.result;
-        const extractedData = parseContent(content, isBinary);
+        let extractedData = {};
+
+        if (isPdf) {
+          const text = await extractTextFromPdf(content);
+          if (!text || text.trim().length === 0) {
+            throw new Error('Could not extract text from PDF.');
+          }
+          extractedData = parseContent(text, false);
+        } else {
+          // Excel or text/CSV
+          const isBinaryForParser = isExcel; 
+          extractedData = parseContent(content, isBinaryForParser);
+        }
         
         if (Object.keys(extractedData).length === 0) {
             setParseError("No standard T-12 keywords found.");
@@ -266,6 +296,22 @@ export default function SyndicatePro() {
 
 
         setInputs(prev => ({ ...prev, ...extractedData }));
+        setItemization({
+          incomeItems: extractedData.incomeItems || [],
+          expenseItems: extractedData.expenseItems || [],
+        });
+        try {
+          const newInputs = { ...inputs, ...extractedData };
+          const newResults = analyzeDeal(newInputs);
+          window.localStorage.setItem('ani_itemization', JSON.stringify({
+            incomeItems: extractedData.incomeItems || [],
+            expenseItems: extractedData.expenseItems || [],
+          }));
+          window.localStorage.setItem('ani_inputs', JSON.stringify(newInputs));
+          window.localStorage.setItem('ani_results', JSON.stringify(newResults));
+        } catch (e) {
+          // ignore storage errors
+        }
         
         const updatedKeys = {};
         Object.keys(extractedData).forEach(key => updatedKeys[key] = true);
@@ -283,8 +329,8 @@ export default function SyndicatePro() {
         setIsUploading(false);
       }
     };
-    
-    if (isBinary) reader.readAsArrayBuffer(file);
+
+    if (isExcel || isPdf) reader.readAsArrayBuffer(file);
     else reader.readAsText(file);
   };
 
@@ -375,10 +421,10 @@ export default function SyndicatePro() {
             </div>
             <div className="flex flex-col items-end w-full md:w-auto">
                 <div className="relative group w-full md:w-auto">
-                <input type="file" id="file-upload" className="hidden" accept=".csv,.txt,.xls,.xlsx,.xlsm" onChange={handleFileUpload} />
+                <input type="file" id="file-upload" className="hidden" accept=".csv,.txt,.xls,.xlsx,.xlsm,.pdf" onChange={handleFileUpload} />
                 <label htmlFor="file-upload" className={`flex items-center justify-center gap-3 px-6 py-3 rounded-full border border-zinc-800 bg-zinc-900/50 hover:bg-zinc-900 hover:border-zinc-700 transition-all cursor-pointer ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}>
                     {isUploading ? <div className="w-4 h-4 border-2 border-zinc-500 border-t-transparent rounded-full animate-spin" /> : <FileSpreadsheet className="w-4 h-4 text-emerald-500" />}
-                    <span className="text-sm font-medium text-zinc-300">{isUploading ? "Scanning..." : fileName ? fileName : "Upload T12 / Rent Roll"}</span>
+                    <span className="text-sm font-medium text-zinc-300">{isUploading ? "Scanning..." : fileName ? fileName : "Upload T12 / Rent Roll (PDF/Excel)"}</span>
                 </label>
                 </div>
                 {parseError && <p className="text-xs text-rose-400 mt-2 flex items-center gap-1"><AlertCircle className="w-3 h-3"/> {parseError}</p>}
@@ -571,3 +617,6 @@ export default function SyndicatePro() {
     </div>
   );
 }
+  // Simple helpers for rendering itemization
+  const totalIncomeItems = itemization.incomeItems.reduce((s, it) => s + it.amount, 0);
+  const totalExpenseItems = itemization.expenseItems.reduce((s, it) => s + it.amount, 0);

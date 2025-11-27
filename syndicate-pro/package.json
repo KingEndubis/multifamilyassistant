@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "audit": "\"C:\\Program Files\\nodejs\\node.exe\" scripts/audit.mjs",
+    "audit:build": "\"C:\\Program Files\\nodejs\\node.exe\" scripts/audit.mjs --build",
+    "verify:finance": "\"C:\\Program Files\\nodejs\\node.exe\" scripts/verify-finance.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.263.1",
@@ -16,12 +19,14 @@
     "recharts": "^2.7.2",
     "xlsx": "^0.18.5",
     "clsx": "^2.0.0",
-    "tailwind-merge": "^1.14.0"
+    "tailwind-merge": "^1.14.0",
+    "pdfjs-dist": "^3.11.174"
   },
   "devDependencies": {
     "@types/react": "^18.2.15",
     "@types/react-dom": "^18.2.7",
     "@vitejs/plugin-react": "^4.0.3",
+    "@vitejs/plugin-react-swc": "^3.4.0",
     "autoprefixer": "^10.4.14",
     "eslint": "^8.45.0",
     "eslint-plugin-react": "^7.32.2",

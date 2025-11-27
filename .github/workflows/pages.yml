@@ -1,0 +1,48 @@
+name: Deploy Becka Companion
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: syndicate-pro/package.json
+      - name: Install deps
+        working-directory: syndicate-pro
+        run: npm ci
+      - name: Build app
+        working-directory: syndicate-pro
+        run: npm run build
+      - name: Include Becka companion page
+        run: |
+          mkdir -p syndicate-pro/dist
+          cp syndicate-pro/ani.html syndicate-pro/dist/ani.html
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: syndicate-pro/dist
+      - name: Deploy to GitHub Pages
+        id: deploy
+        uses: actions/deploy-pages@v4
