@@ -34,6 +34,8 @@ jobs:
         run: npm ci
       - name: Build app
         working-directory: syndicate-pro
+        env:
+          VITE_BASE: "/${{ github.event.repository.name }}/"
         run: npm run build
       - name: Include Becka companion page
         run: |
