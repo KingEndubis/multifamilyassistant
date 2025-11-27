@@ -1,22 +1,31 @@
-# Gemini Build Import
+# Multifamily Assistant – Scaffolded App
 
-This repository is being reconstructed from the Gemini share link:
+This repository now contains a scaffolded web application generated from your `master file.txt` (imported as `scaffold.py`). The generator created a Vite + React + Tailwind project under `syndicate-pro/`.
 
-- Source: https://gemini.google.com/share/f55b4a952fe4
+## Structure
 
-## Status
+- `scaffold.py` – Python generator used to create the project files
+- `syndicate-pro/` – Web app source
+  - `package.json`, `vite.config.js`, `tailwind.config.js`
+  - `index.html`
+  - `src/` with `main.jsx`, `App.jsx`, `index.css`
+  - `.gitignore`
 
-- The share page HTML (`gemini_share.html`) has been downloaded into the workspace.
-- The page does not expose a direct downloadable build artifact via static links accessible from `Invoke-WebRequest`.
+## Requirements
 
-## Next Steps
+- Python (already present: 3.12+)
+- Node.js and npm (not currently installed on this machine)
+  - Install Node.js LTS (v18+) from `https://nodejs.org/`
 
-If the build is a ZIP or other downloadable asset, please provide a direct URL to the file or upload the asset into this folder. Once present, we will:
+## Getting Started
 
-1. Extract the build archive into the repository.
-2. Verify and reconstruct source code (if the build contains compiled output only, we will recreate scaffolding based on app structure).
-3. Commit the imported code and push to your GitHub repository.
+1. `cd syndicate-pro`
+2. `npm install`
+3. `npm run dev`
 
-## GitHub Push
+The dev server will start and print a local URL like `http://localhost:5173/`.
 
-Please share your GitHub repository URL (e.g., `https://github.com/<user>/<repo>.git`) or confirm a new repository name to create and push to. If you already have `gh` (GitHub CLI) authenticated, we can create and push in one step.
+## Notes
+
+- The original Gemini share page (`gemini_share.html`) has been removed in favor of the generated app.
+- If you want the project name or UI copy adjusted for Multifamily Assistant branding, let me know and I’ll update the scaffold and push.
