@@ -1,0 +1,373 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Becka Companion | Multifamily</title>
+    <style>
+      :root{ --bg:#ffffff; --text:#0a0a0a; --muted:#6b7280; --border:#e5e7eb; --soft:#f3f4f6; --accent:#111827; }
+      body { background:var(--bg); color:var(--text); font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial; }
+      .wrap { max-width: 960px; margin: 24px auto; padding: 16px; }
+      .card { background:#fff; border:1px solid var(--border); border-radius:14px; padding:16px; margin-bottom:16px; }
+      .row { display:none; }
+      button { background:#111827; color:#fff; border:none; border-radius:10px; padding:10px 12px; cursor:pointer; }
+      button:hover { opacity:0.9; }
+      .log { display:none; }
+      .messages { max-height: 52vh; overflow:auto; padding: 10px; }
+      .msg { display:flex; gap:10px; margin:12px 0; }
+      .bubble { padding:10px 12px; border-radius:14px; border:1px solid var(--border); max-width: 78%; white-space:pre-wrap; word-wrap:break-word; }
+      .msg.ani .bubble { background:#f8fafc; }
+      .msg.user { justify-content:flex-end; }
+      .msg.user .bubble { background:#111827; color:#fff; border-color:#000; }
+      .composer { position:fixed; bottom:0; left:0; right:0; background:linear-gradient(180deg, rgba(255,255,255,0.66), var(--bg)); border-top:1px solid var(--border); }
+      .composer .inner { max-width:960px; margin:0 auto; padding:12px 16px; }
+      .bar { display:flex; gap:8px; align-items:center; border:1px solid var(--border); border-radius:16px; padding:8px; background:#fff; }
+      .bar input[type=text] { flex:1; font-size:15px; border:none; outline:none; background:transparent; padding:8px; }
+      .btn { background:#111827; color:#fff; border:none; border-radius:12px; padding:10px 14px; cursor:pointer; }
+      .btn.secondary { background:#f3f4f6; color:#0f172a; border:1px solid var(--border); }
+      .upload { display:inline-flex; align-items:center; gap:6px; border:1px dashed var(--border); border-radius:10px; padding:8px 10px; font-size:12px; color:var(--muted); cursor:pointer; }
+      .upload:hover { color:#0f172a; border-color:#cbd5e1; }
+      .badge { font-size:12px; color:var(--muted); }
+      .settings{ display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-top:10px; }
+      .link{ background:transparent; border:none; color:#2563eb; font-size:12px; cursor:pointer; padding:4px 6px; }
+      .setting{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--border); border-radius:10px; padding:6px 8px; background:var(--soft); }
+      .setting span{ font-size:12px; color:var(--muted); }
+      .setting input{ width:80px; border:none; outline:none; background:transparent; font-size:13px; color:var(--text); text-align:right; }
+      .metrics{ display:grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap:8px; }
+      .metric{ background:var(--soft); border:1px solid var(--border); border-radius:10px; padding:10px; }
+      .metric .label{ font-size:12px; color:var(--muted); }
+      .metric .value{ font-weight:600; }
+    </style>
+    <style>
+      .settings .link.active{ background:#111; color:#fff; border-color:#111; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="card">
+        <h2 style="margin:0 0 6px">Becka — Multifamily Companion</h2>
+        <div class="badge">Ask “Quick analysis”, “Detailed analysis”, “Suggested price”, “Area cap rate”.</div>
+        <div id="aiStatus" class="badge">AI: loading…</div>
+        <div class="settings">
+          <span class="badge">Mode</span>
+          <button id="modeQuick" class="link" title="Cap-based quick pricing">Quick</button>
+          <button id="modeDetailed" class="link" title="DSCR-based financing">Detailed</button>
+          <span class="badge">•</span>
+          <label class="setting"><span>Area Cap</span><input id="capInput" type="number" step="0.01" placeholder="6.5" /></label>
+          <label class="setting"><span>Interest</span><input id="intInput" type="number" step="0.01" placeholder="6.5" /></label>
+          <label class="setting"><span>LTV</span><input id="ltvInput" type="number" step="1" placeholder="75" /></label>
+          <label class="setting"><span>DSCR</span><input id="dscrInput" type="number" step="0.01" placeholder="1.25" /></label>
+          <label class="setting"><span>Amort (yrs)</span><input id="amortInput" type="number" step="1" placeholder="30" /></label>
+        </div>
+        <div class="row" style="margin-top:10px">
+          <button id="btnStart">Start Listening</button>
+          <button id="btnStop">Stop Listening</button>
+          <button id="btnSpeak">Speak Summary</button>
+          <button id="btnFast">AI Mode: Fast</button>
+          <button id="btnBalanced">AI Mode: Balanced</button>
+          <button id="btnWake">Wake Word: Off</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">Analysis</h3>
+        <div id="analysis" class="metrics"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">Chat</h3>
+        <div id="messages" class="messages"></div>
+      </div>
+
+      <div class="card">
+        <h3 style="margin:0 0 6px">Suggestions (Estimated Annual Impact)</h3>
+        <ul id="sugs"></ul>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="inner">
+        <form id="composerForm" class="bar">
+          <label class="upload" for="fileInput">📎 Upload PDF/Excel
+            <input id="fileInput" type="file" accept=".pdf,.xlsx,.xls,.csv" multiple hidden />
+          </label>
+          <input id="chatText" type="text" placeholder="Message Becka about this property…" autocomplete="off" />
+          <button id="btnMic" type="button" class="btn secondary" aria-pressed="false" title="Toggle mic">🎤</button>
+          <button id="btnSend" type="submit" class="btn" title="Send">Send</button>
+        </form>
+        <div class="badge">Tip: Try “Summarize”, “Increase NOI”, “Top expenses”, or drop files here.</div>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as webllm from 'https://esm.run/@mlc-ai/web-llm';
+      const status = document.getElementById('aiStatus');
+      async function initEngine(preferred) {
+        const model = preferred || localStorage.getItem('ani_model') || 'Phi-3-mini-4k-instruct-q4f16_1';
+        status.textContent = 'AI: loading…';
+        try {
+          const engine = await webllm.CreateMLCEngine({ model }, {
+            initProgressCallback: (p) => {
+              try { const txt = typeof p === 'string' ? p : (p?.text || 'loading…'); status.textContent = 'AI: ' + txt; } catch {}
+            }
+          });
+          window.aniEngine = engine;
+          localStorage.setItem('ani_model', model);
+          status.textContent = `AI: ready (${model})`;
+        } catch (e) {
+          console.warn('WebLLM init failed for', model, e);
+          if (model !== 'Llama-3.1-8B-Instruct-q4f32_1') {
+            // fallback to balanced
+            await initEngine('Llama-3.1-8B-Instruct-q4f32_1');
+            return;
+          }
+          status.textContent = 'AI: disabled';
+        }
+      }
+      await initEngine();
+      window.aniInitEngine = initEngine;
+      initSettingsUI();
+    </script>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+    <script>
+      if (window['pdfjsLib']) {
+        pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+      }
+      function readJSON(key, fallback) {
+        try { const raw = localStorage.getItem(key); return raw ? JSON.parse(raw) : fallback; } catch { return fallback; }
+      }
+
+      function suggest(inputs, results, itemization) {
+        const suggestions = [];
+        const units = inputs.units || 0;
+        const egi = results.effectiveGrossIncome || 0;
+        const targetMgmt = egi * 0.03;
+        const mgmt = inputs.management || 0;
+        if (mgmt > targetMgmt && targetMgmt > 0) suggestions.push({ title: 'Normalize management fee to 3% of EGI', annualImpact: Math.max(0, mgmt - targetMgmt), rationale: 'Negotiate or re-bid management.' });
+        const utilities = inputs.utilities || 0;
+        if (utilities > 0) suggestions.push({ title: 'Implement RUBS to recapture 15% of utilities', annualImpact: utilities * 0.15, rationale: 'Billback reduces owner-paid utilities.' });
+        const repairs = inputs.repairs || 0;
+        const repairsPerDoor = units ? repairs / units : repairs;
+        if (repairsPerDoor > 500) suggestions.push({ title: 'Preventative maintenance program (-10% repairs)', annualImpact: repairs * 0.10, rationale: 'Vendor consolidation & PM reduce emergencies.' });
+        const gpr = inputs.grossRents || 0;
+        const otherIncome = inputs.otherIncome || 0;
+        const targetOther = gpr * 0.05;
+        if (otherIncome < targetOther) suggestions.push({ title: 'Add pet/parking/laundry to reach 5% other income', annualImpact: Math.max(0, targetOther - otherIncome), rationale: 'Ancillary income aligned with value.' });
+        const admin = inputs.admin || 0;
+        const adminPerDoor = units ? admin / units : admin;
+        if (adminPerDoor > 150) suggestions.push({ title: 'Trim admin/legal/marketing by 10%', annualImpact: admin * 0.10, rationale: 'Audit subscriptions & fees.' });
+        const vacancyRate = inputs.vacancyRate || 0;
+        if (vacancyRate > 5 && gpr > 0) suggestions.push({ title: 'Stabilize vacancy to 5%', annualImpact: gpr * ((vacancyRate - 5)/100), rationale: 'Improve leasing funnel and retention.' });
+        const labels = new Set((itemization?.incomeItems || []).map(i => (i.label||'').toLowerCase()));
+        const candidates = [ { label:'pet rent', amount: units * 20 * 12 }, { label:'reserved parking', amount: units * 10 * 12 }, { label:'utility billback', amount: utilities * 0.10 } ];
+        candidates.forEach(f => {
+          if (!Array.from(labels).some(l => l.includes('pet') || l.includes('parking') || l.includes('utility billback'))) {
+            if (f.amount > 0) suggestions.push({ title:`Consider ${f.label}`, annualImpact: f.amount, rationale:'Recurring ancillary income.' });
+          }
+        });
+        suggestions.sort((a,b)=> (b.annualImpact||0) - (a.annualImpact||0));
+        return suggestions;
+      }
+
+      function renderSuggestions() {
+        const inputs = readJSON('ani_inputs', {});
+        const results = readJSON('ani_results', {});
+        const itemization = readJSON('ani_itemization', { incomeItems: [], expenseItems: [] });
+        const sugs = suggest(inputs, results, itemization);
+        const ul = document.getElementById('sugs');
+        ul.innerHTML = '';
+        sugs.slice(0, 10).forEach(s => {
+          const li = document.createElement('li');
+          li.innerHTML = `<strong>${s.title}</strong> — <span class="impact">$${Math.max(0, s.annualImpact||0).toFixed(0)}</span><div class="badge">${s.rationale}</div>`;
+          ul.appendChild(li);
+        });
+      }
+
+      // Financing and pricing analysis
+      function getSettings(){
+        const defaults = { capRate: 0.065, interest: 0.065, amortYears: 30, ltv: 0.75, dscr: 1.25, mode: 'quick' };
+        const s = readJSON('ani_settings', {});
+        return Object.assign({}, defaults, s || {});
+      }
+      function saveSettings(s){ localStorage.setItem('ani_settings', JSON.stringify(s)); }
+      function percentToFraction(v){ v = parseFloat(v||0); return v > 1 ? (v/100) : v; }
+      function fractionToPercentStr(v){ return ((parseFloat(v||0))*100).toFixed(2); }
+      function annuityFactor(rateMonthly, n){ return rateMonthly * Math.pow(1 + rateMonthly, n) / (Math.pow(1 + rateMonthly, n) - 1); }
+
+      function analyze(){
+        const res = readJSON('ani_results', {});
+        const s = getSettings();
+        const noi = res.noi || 0;
+        const cap = s.capRate || 0;
+        const priceCash = (noi > 0 && cap > 0) ? (noi / cap) : 0;
+        let priceFin = 0, loan = 0, payMonthly = 0;
+        const r = (s.interest||0) / 12; const n = (s.amortYears||0) * 12;
+        const fac = (r > 0 && n > 0) ? annuityFactor(r, n) : 0;
+        if (s.mode === 'detailed' && fac > 0 && s.dscr > 0) {
+          const payMaxMonthly = (noi / s.dscr) / 12;
+          loan = payMaxMonthly / fac;
+          priceFin = s.ltv > 0 ? (loan / s.ltv) : 0;
+          payMonthly = payMaxMonthly;
+        } else {
+          // quick: same price as cap-based, compute indicative monthly debt
+          priceFin = priceCash;
+          loan = priceFin * (s.ltv||0);
+          payMonthly = fac > 0 ? (loan * fac) : 0;
+        }
+        const analysis = { noi, capRate: cap, priceCash, priceFin, loan, payMonthly, ltv: s.ltv, dscrTarget: s.dscr, interest: s.interest, amortYears: s.amortYears };
+        localStorage.setItem('ani_analysis', JSON.stringify(analysis));
+        renderAnalysis(analysis);
+      }
+
+      function renderAnalysis(a){
+        const el = document.getElementById('analysis'); if (!el) return;
+        const money = (v)=> `$${Math.round(v||0).toLocaleString()}`;
+        const pct = (v)=> `${((v||0)*100).toFixed(2)}%`;
+        el.innerHTML = `
+          <div class="metric"><div class="label">NOI</div><div class="value">${money(a.noi)}</div></div>
+          <div class="metric"><div class="label">Area Cap</div><div class="value">${pct(a.capRate)}</div></div>
+          <div class="metric"><div class="label">Price (All-Cash)</div><div class="value">${money(a.priceCash)}</div></div>
+          <div class="metric"><div class="label">Price (Financing)</div><div class="value">${money(a.priceFin)}</div></div>
+          <div class="metric"><div class="label">Loan Amount</div><div class="value">${money(a.loan)}</div></div>
+          <div class="metric"><div class="label">Monthly Debt</div><div class="value">${money(a.payMonthly)}</div></div>
+          <div class="metric"><div class="label">LTV</div><div class="value">${pct(a.ltv)}</div></div>
+          <div class="metric"><div class="label">DSCR Target</div><div class="value">${(a.dscrTarget||0).toFixed(2)}</div></div>
+          <div class="metric"><div class="label">Interest</div><div class="value">${pct(a.interest)}</div></div>
+          <div class="metric"><div class="label">Amort</div><div class="value">${a.amortYears} yrs</div></div>
+        `;
+      }
+
+      function updateModeButtons(){
+        const s = getSettings();
+        const q = document.getElementById('modeQuick');
+        const d = document.getElementById('modeDetailed');
+        if (!q || !d) return;
+        q.classList.toggle('active', s.mode === 'quick');
+        d.classList.toggle('active', s.mode === 'detailed');
+      }
+
+      function initSettingsUI(){
+        const s = getSettings();
+        updateModeButtons();
+        const cap = document.getElementById('capInput');
+        const int = document.getElementById('intInput');
+        const ltv = document.getElementById('ltvInput');
+        const dscr = document.getElementById('dscrInput');
+        const amort = document.getElementById('amortInput');
+        const set = (el, v)=> { if (!el) return; el.value = (v||''); };
+        set(cap, (s.capRate||0) * 100);
+        set(int, (s.interest||0) * 100);
+        set(ltv, Math.round((s.ltv||0) * 100));
+        set(dscr, (s.dscr||0));
+        set(amort, (s.amortYears||0));
+        const pct = (id)=> percentToFraction((document.getElementById(id)?.value)||0);
+        const num = (id)=> parseFloat((document.getElementById(id)?.value)||0);
+        const update = ()=> {
+          const next = {
+            capRate: pct('capInput'),
+            interest: pct('intInput'),
+            ltv: pct('ltvInput'),
+            dscr: num('dscrInput'),
+            amortYears: num('amortInput'),
+            mode: (document.getElementById('modeDetailed')?.classList.contains('active')) ? 'detailed' : 'quick',
+          };
+          saveSettings(next);
+          updateModeButtons();
+          analyze();
+        };
+        ['capInput','intInput','ltvInput','dscrInput','amortInput'].forEach(id => {
+          const el = document.getElementById(id); if (!el) return;
+          el.addEventListener('change', update);
+          el.addEventListener('input', update);
+        });
+        const q = document.getElementById('modeQuick'); const d = document.getElementById('modeDetailed');
+        if (q) q.addEventListener('click', ()=> { d.classList.remove('active'); q.classList.add('active'); update(); });
+        if (d) d.addEventListener('click', ()=> { q.classList.remove('active'); d.classList.add('active'); update(); });
+        analyze();
+      }
+
+      function renderMessage(role, text){
+        const list = document.getElementById('messages');
+        const item = document.createElement('div'); item.className = 'msg ' + role;
+        const bubble = document.createElement('div'); bubble.className = 'bubble'; bubble.textContent = text;
+        item.appendChild(bubble); list.appendChild(item);
+        list.scrollTop = list.scrollHeight + 100;
+      }
+      function renderAnalysisFromText(text){
+        try { const res = JSON.parse(text); localStorage.setItem('ani_results', text); renderSuggestions(); analyze(); }
+        catch {}
+      }
+      function readFile(file){ return new Promise((resolve, reject)=>{ try { const r = new FileReader(); r.onload = ()=> resolve(r.result); r.onerror = reject; r.readAsText(file); } catch(e){ reject(e); } }); }
+      function readArrayBuffer(file){ return new Promise((resolve, reject)=>{ try { const r = new FileReader(); r.onload = ()=> resolve(r.result); r.onerror = reject; r.readAsArrayBuffer(file); } catch(e){ reject(e); } }); }
+
+      function parsePDF(arrayBuffer){
+        const res = { incomeItems:[], expenseItems:[] };
+        try {
+          if (!window['pdfjsLib']) return res;
+          const text = new TextDecoder('utf-8').decode(arrayBuffer||new ArrayBuffer());
+          const lines = (text||'').split(/\r?\n/).map(s=> s.trim());
+          const guessNoi = ()=> {
+            const pat = /NET\s*OPERATING\s*INCOME|NOI/i;
+            for (let i=0;i<lines.length;i++){
+              if (pat.test(lines[i])){
+                for (let j=i;j<Math.min(lines.length, i+20); j++){
+                  const v = parseFloat(lines[j].replace(/[^0-9.-]/g,'')); if (!isNaN(v) && v > 0) return v;
+                }
+              }
+            }
+            return 0;
+          };
+          res.noi = guessNoi();
+        } catch {}
+        return res;
+      }
+
+      async function parseExcel(arrayBuffer){
+        const res = { incomeItems:[], expenseItems:[] };
+        try {
+          if (!window['XLSX']) return res;
+          const wb = XLSX.read(arrayBuffer, { type:'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]]; const rows = XLSX.utils.sheet_to_json(ws, { header:1 });
+          const labelAndAmount = (row)=>{
+            if (!row) return null;
+            const label = String((row[0]||'')).trim().toLowerCase();
+            const val = parseFloat(String(row[1]||'').replace(/[^0-9.-]/g,''));
+            if (!label || isNaN(val)) return null; return { label, amount: val };
+          };
+          rows.forEach(row=>{ const item = labelAndAmount(row); if (!item) return; const [l,a] = [item.label, item.amount]; const target = /rent|gpr|gross.*rents|income/.test(l) ? res.incomeItems : res.expenseItems; target.push({ label:l, amount:a }); });
+          res.noi = (res.incomeItems.reduce((s,i)=> s+(i.amount||0),0) - res.expenseItems.reduce((s,i)=> s+(i.amount||0),0));
+        } catch {}
+        return res;
+      }
+
+      async function parseFiles(files){
+        const itemization = { incomeItems:[], expenseItems:[] };
+        for (const f of files){
+          try {
+            if (/pdf$/i.test(f.name)){ const b = await readArrayBuffer(f); const r = parsePDF(b); itemization.incomeItems.push(...(r.incomeItems||[])); itemization.expenseItems.push(...(r.expenseItems||[])); if (r.noi) localStorage.setItem('ani_results', JSON.stringify({ effectiveGrossIncome: r.noi })); }
+            else if (/(xlsx|xls|csv)$/i.test(f.name)){ const b = await readArrayBuffer(f); const r = await parseExcel(b); itemization.incomeItems.push(...(r.incomeItems||[])); itemization.expenseItems.push(...(r.expenseItems||[])); if (r.noi) localStorage.setItem('ani_results', JSON.stringify({ effectiveGrossIncome: r.noi })); }
+          } catch (e){ console.warn('parse failed', f.name, e); }
+        }
+        localStorage.setItem('ani_itemization', JSON.stringify(itemization));
+        renderSuggestions(); analyze();
+      }
+
+      function initComposer(){
+        const form = document.getElementById('composerForm'); if (!form) return;
+        const text = document.getElementById('chatText'); const file = document.getElementById('fileInput'); const mic = document.getElementById('btnMic');
+        const userSend = ()=>{
+          const t = (text?.value||'').trim(); if (!t) return; renderMessage('user', t); text.value = '';
+        };
+        form.addEventListener('submit', (e)=>{ e.preventDefault(); userSend(); });
+        text.addEventListener('keydown', (e)=>{ if (e.key === 'Enter'){ e.preventDefault(); userSend(); }});
+        file.addEventListener('change', async ()=>{ try { await parseFiles(file.files||[]); } catch{} });
+      }
+
+      initComposer();
+
+      renderSuggestions();
+      analyze();
+    </script>
+  </body>
+</html>
