@@ -29,14 +29,16 @@ jobs:
           node-version: 20
           cache: 'npm'
           cache-dependency-path: syndicate-pro/package.json
-      - name: Install deps
+      - name: Install deps (no lockfile)
         working-directory: syndicate-pro
-        run: npm ci
+        run: npm install
       - name: Build app
         working-directory: syndicate-pro
         env:
           VITE_BASE: "/${{ github.event.repository.name }}/"
         run: npm run build
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
       - name: Include Becka companion page
         run: |
           mkdir -p syndicate-pro/dist
