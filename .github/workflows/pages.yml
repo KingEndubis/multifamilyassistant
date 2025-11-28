@@ -33,6 +33,8 @@ jobs:
         working-directory: syndicate-pro
         run: npm install
       - name: Build app
+        id: build
+        continue-on-error: true
         working-directory: syndicate-pro
         env:
           VITE_BASE: "/${{ github.event.repository.name }}/"
@@ -40,13 +42,25 @@ jobs:
       - name: Setup Pages
         uses: actions/configure-pages@v5
       - name: Include Becka companion page
+        if: steps.build.outcome == 'success'
         run: |
           mkdir -p syndicate-pro/dist
           cp syndicate-pro/ani.html syndicate-pro/dist/ani.html
-      - name: Upload artifact
+      - name: Upload artifact (dist)
+        if: steps.build.outcome == 'success'
         uses: actions/upload-pages-artifact@v3
         with:
           path: syndicate-pro/dist
+      - name: Prepare fallback site
+        if: steps.build.outcome != 'success'
+        run: |
+          mkdir -p fallback-site
+          cp syndicate-pro/ani.html fallback-site/ani.html
+      - name: Upload artifact (fallback)
+        if: steps.build.outcome != 'success'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: fallback-site
       - name: Deploy to GitHub Pages
         id: deploy
         uses: actions/deploy-pages@v4
